@@ -734,6 +734,8 @@ class Playlists extends MenuItem {
             <input id='track-playlist' type='hidden' value='<?php echo $playlistId; ?>'>
             <label></label><span id='error-msg' class='error'></span>
             <div>
+                <a style='padding-right:4px;' href='#' class='nav pull-right' onClick=window.open('?target=export&playlist=<?php echo $playlistId ?>&format=html')>Print View</a>
+
                 <label>Type:</label>
                 <select id='track-type-pick'>
                    <option value='tag-entry'>Tag ID</option>
@@ -1856,12 +1858,6 @@ class Playlists extends MenuItem {
         $djId = $playlist['id'];
         $djName = $playlist['airname'];
         $showDateTime = $this->makeShowDateAndTime($playlist);
-
-        // make print view header
-        echo "<TABLE WIDTH='100%'><TR><TD ALIGN=RIGHT><A HREF='#top' " .
-             "CLASS='nav' onClick=window.open('?target=export&amp;session=" . 
-             $this->session->getSessionID() . "&amp;playlist=" . $playlistId . 
-             "&amp;format=html')>Print View</A></TD></TR></TABLE>";
 
         $dateDiv = "<DIV>".$showDateTime."&nbsp;</div>";
         $djLink = "<A HREF='?action=viewDJ&amp;seq=selUser&amp;session=" . 
