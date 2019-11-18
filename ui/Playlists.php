@@ -24,6 +24,8 @@
 
 namespace ZK\UI;
 
+use \Datetime;
+
 use ZK\Engine\Engine;
 use ZK\Engine\IDJ;
 use ZK\Engine\ILibrary;
@@ -162,8 +164,8 @@ class Playlists extends MenuItem {
         $fromTimeN = $this->normalizeTime($fromTime);
         $toTimeN = $this->normalizeTime($toTime);
 
-        $start = \DateTime::createFromFormat($TIME_FORMAT, "2019-01-01 " . $fromTimeN);
-        $end =  \DateTime::createFromFormat($TIME_FORMAT, "2019-01-01 " . $toTimeN);
+        $start = DateTime::createFromFormat($TIME_FORMAT, "2019-01-01 " . $fromTimeN);
+        $end =  DateTime::createFromFormat($TIME_FORMAT, "2019-01-01 " . $toTimeN);
 
         $validRange = false;
         if ($start && $end) {
@@ -345,8 +347,8 @@ class Playlists extends MenuItem {
             </div>
             <div>
                 <label>Air Name:</label>
-                <INPUT TYPE='text' LIST='airnames' NAME='airname' required autocomplete="off" VALUE='<?php echo !is_null($airName)?$airName:($description?"None":""); ?>'/>
-                <DATALIST ID="airnames">
+                <INPUT id='show-airname' TYPE='text' LIST='airnames' NAME='airname' required autocomplete="off" VALUE='<?php echo !is_null($airName)?$airName:($description?"None":""); ?>'/>
+                <DATALIST id='airnames'>
                   <?php echo $airNames; ?>
                 </DATALIST>
             </div>
@@ -404,6 +406,21 @@ class Playlists extends MenuItem {
                 }
     
                 $("#new-show").on("submit", function(e) {
+                    // check for new airname
+                    var airname = $('#show-airname').val().trim().toLowerCase();
+                    var isNew = true;
+                    $('#airnames option').each(function() {
+                        if($(this).val().toLowerCase() == airname) {
+                            isNew = false;
+                            return false;
+                        }
+                    });
+
+                    if(isNew && !confirm('Create new air name "' +
+                           $('#show-airname').val() + '"?')) {
+                        return false;
+                    }
+
                     // rearrange DP local format to ISO
                     var pickerDate = $('#show-date-picker').val();
                     if (pickerDate.indexOf('/') > 0) {
@@ -532,13 +549,13 @@ class Playlists extends MenuItem {
             $sourcePlaylist = Engine::api(IPlaylist::class)->getPlaylist($playlistId, 1);
         } else {
             $WEEK_SECONDS = 60 *60 * 24 * 7;
-            $nowDateStr =  (new \DateTime())->format("Y-m-d");
-            $nowDateTimestamp =  (new \DateTime($nowDateStr))->getTimestamp();
+            $nowDateStr =  (new DateTime())->format("Y-m-d");
+            $nowDateTimestamp =  (new DateTime($nowDateStr))->getTimestamp();
 
             // see if there is a PL on this day last week. if so use it.
             $playlists = Engine::api(IPlaylist::class)->getPlaylists(1, 1, "", 1, $this->session->getUser(), 1, 10);
             while ($playlists && ($playlist = $playlists->fetch())) {
-                $showDate = new \DateTime($playlist['showdate']);
+                $showDate = new DateTime($playlist['showdate']);
                 $dateInterval = $nowDateTimestamp - $showDate->getTimestamp();
                 if ($dateInterval == $WEEK_SECONDS) {
                     $sourcePlaylist = $playlist;
@@ -728,6 +745,13 @@ class Playlists extends MenuItem {
     }
     
     private function emitTrackEditor($playlistId) {
+        $nmeAr = Engine::param('nme');
+        $nmeOpts = '';
+        $nmePrefix = IPlaylist::NME_PREFIX;
+        foreach ($nmeAr as $nme) {
+            $nmeOpts = $nmeOpts . "<option data-args='" . $nme['args'] . "' value='" . $nmePrefix . $nme['name'] . "'>" . $nme['name'] . "</option>";
+        }
+
     ?>
         <div class='pl-form-entry'>
             <input id='track-session' type='hidden' value='session VALUE="<?php echo $this->session->getSessionID(); ?>'>
@@ -740,8 +764,7 @@ class Playlists extends MenuItem {
                 <select id='track-type-pick'>
                    <option value='tag-entry'>Tag ID</option>
                    <option value='manual-entry'>Manual</option>
-                   <option value='nme-psa'>PSA</option>
-                   <option value='nme-promo'>Promo</option>
+                   <?php echo $nmeOpts; ?>
                 </select>
             </div>
             <div id='track-entry'>
@@ -789,7 +812,7 @@ class Playlists extends MenuItem {
             </div> <!-- track-entry -->
             <div>
                 <label></label>
-                <button DISABLED id='track-submit' >Add Track</button>
+                <button DISABLED id='track-submit' >Add Item</button>
                 <button style='margin-left:17px;' id='track-separator'>Add Separator</button>
             </div>
         </div> <!-- track-editor -->
@@ -800,6 +823,7 @@ class Playlists extends MenuItem {
         function setFocus(){}
 
         $().ready(function(){
+            const NME_ENTRY='nme-entry';
             const SPECIAL_TRACK = "<?php echo IPlaylist::SPECIAL_TRACK; ?>";
             const NME_PREFIX    = "<?php echo IPlaylist::NME_PREFIX; ?>";
             var tagId = "";
@@ -842,7 +866,7 @@ class Playlists extends MenuItem {
             function getEntryMode()  {
                 var entryMode = $('#track-type-pick').val();
                 if (isNmeType(entryMode))
-                    entryMode = 'nme-entry';
+                    entryMode = NME_ENTRY;
 
                 return entryMode;
             }
@@ -856,7 +880,7 @@ class Playlists extends MenuItem {
                     $("#manual-entry input[required]").each(function() {
                         isEmpty = isEmpty || $(this).val().length == 0;
                     });
-                } else if (entryMode == 'nme-entry') {
+                } else if (entryMode == NME_ENTRY) {
                     isEmpty = $('#nme-id').val().length == 0;
                 }
                     
@@ -912,6 +936,15 @@ class Playlists extends MenuItem {
                 clearUserInput(true);
                 $("#track-entry > div").addClass("zk-hidden");
                 $("#" + newType).removeClass("zk-hidden");
+                if (newType == NME_ENTRY) {
+                    var option = $("option:selected", this);
+                    var argCnt = $(option).data("args");
+                    // insert default value if no user entry required.
+                    if (argCnt == 0) {
+                        $("#nme-id").val($(option).text());
+                        setAddButtonState(true);
+                    }
+                }
             });
 
 
@@ -1466,7 +1499,7 @@ class Playlists extends MenuItem {
             <TD ALIGN=RIGHT>Airname:</TD>
             <TD><SELECT NAME=airname>
     <?php 
-            $records = Engine::api(IDJ::class)->getAirnames($this->session->getUser());
+            $records = Engine::api(IDJ::class)->getAirnames($this->session->getUser(), 0, $djname);
             while ($records && ($row = $records->fetch())) {
                 $selected = ($row[0] == $airname)?" SELECTED":"";
                 echo "              <OPTION VALUE=\"" . $row[0] ."\"" . $selected .
@@ -1735,6 +1768,7 @@ class Playlists extends MenuItem {
     
     private function viewListGetAlbums(&$records, &$albums) {
         while($row = $records->fetch()) {
+            $row["LABELNAME"] = $row["label"];
             $albums[] = $row;
         }
     }
@@ -1766,14 +1800,25 @@ class Playlists extends MenuItem {
     // converts "last, first" to "first last" being careful to not swap
     // other formats that have comas. call only for ZK library entries
     // since manual entries don't need this. Test cases: The Band, CSN&Y,
-    // Bing Crosby & Fred Astaire, eg: 694717, 911685.
+    // Bing Crosby & Fred Astaire, Bunett, June and Maqueque, Electro, Brad 
+    // Feat. Marwan Kanafaneg: 694717, 418485, 911685, 914824, 880994.
     private function swapNames($fullName) {
-       $retVal = $fullName;
-       $namesAr = explode(", ", $fullName);
-       if (count($namesAr) == 2 && strrpos($namesAr[1], ' ') < 1) {
-           $retVal = $namesAr[1] . " " . $namesAr[0];
-       }
-       return $retVal;
+        $suffixMap = [ "with" => "", "and" => "", "feat." => "" ];
+    
+        $namesAr = explode(", ", $fullName);
+        if (count($namesAr) == 2) {
+            $spacesAr = explode(" ", $namesAr[1]);
+            $spacesCnt = count($spacesAr);
+            if ($spacesCnt == 1) {
+                $fullName = $namesAr[1] . " " . $namesAr[0];
+            } else if ($spacesCnt > 1) {
+                $key = strtolower($spacesAr[1]);
+                if (array_key_exists($key, $suffixMap)) {
+                    $fullName = $spacesAr[0] . ' ' . $namesAr[0] . ' ' . substr($namesAr[1], strlen($spacesAr[0]));
+                }
+            }
+        }
+        return $fullName;
     }
 
     // return user presentable string for the nme type, eg PROMO
@@ -2043,19 +2088,15 @@ class Playlists extends MenuItem {
         $i = 0;
         while($records && ($row = $records->fetch())) {
             $row["sort"] = preg_match("/^the /i", $row[1])?substr($row[1], 4):$row[1];
-            // sort symbols beyond Z with the numerics and other special chars
-            if(UI::deLatin1ify(mb_strtoupper(mb_substr($row["sort"], 0, 1))) > "Z")
-                $row["sort"] = "@".$row["sort"];
-
             $dj[$i++] = $row;
         }
     
         if(isset($dj))
-            usort($dj, array($this, "emitViewDJSortFn"));
+        usort($dj, array($this, "emitViewDJSortFn"));
     
         for($j = 0; $j < $i; $j++) {
             $row = $dj[$j];
-            $cur = UI::deLatin1ify(mb_strtoupper(mb_substr($row["sort"], 0, 1)));
+            $cur = strtoupper(substr($row["sort"], 0, 1));
             if($cur < "A") $cur = "#";
             if($cur != $last) {
                 $last = $cur;
